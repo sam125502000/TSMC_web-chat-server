@@ -2,9 +2,18 @@ import express from "express";
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import { io } from "socket.io-client";
-import { failHandle, messageHandler, successHandle } from "./messageHandler";
+import { failHandle, messageHandler, successHandle, clientMessageProcess } from "./messageHandler";
 
 describe("Unit Test - messageHandler", () => {
+
+    const message = {
+        user: undefined,
+        room: undefined,
+        text: undefined,
+        datetime: undefined
+    };
+
+    const mockChatServer = new Server();
 
     test("Fail Handle", () => {
         const error = "TestError";
@@ -14,11 +23,14 @@ describe("Unit Test - messageHandler", () => {
     });
 
     test("Success Handle", () => {
+
         const messageGood = {
             user: "test",
+            room: "test",
             text: "test",
             datetime: 12345
         };
+
         const mockCallBack = jest.fn();
         const app = express();
         const httpServer = createServer(app);
@@ -34,13 +46,29 @@ describe("Unit Test - messageHandler", () => {
         expect(mockCallBack).toHaveBeenCalled();
         expect(mockSocketEmit).toHaveBeenCalledWith("message:server", messageGood);
     });
+
+    test("Validation Success", () => {
+        const returnGood = { "_tag": "Right", "right": message };
+        const mockMessageValidateSuccess = jest.fn().mockReturnValue(returnGood);
+        const mockSuccessHandle = jest.fn();
+        clientMessageProcess(message, mockChatServer, mockMessageValidateSuccess, failHandle, mockSuccessHandle, (result: Object) => { });
+        expect(mockSuccessHandle).toHaveBeenCalled();
+    });
+
+    test("Validation Fail", () => {
+        const returnBad = { "_tag": "Left", "left": "test" };
+        const mockMessageValidateFail = jest.fn().mockReturnValue(returnBad);
+        const mockFailHandle = jest.fn();
+        clientMessageProcess(message, mockChatServer, mockMessageValidateFail, mockFailHandle, successHandle, (result: Object) => { });
+        expect(mockFailHandle).toHaveBeenCalled();
+    });
 });
 
 describe("Integration Test - messageHandler", () => {
 
     const app = express();
     const httpServer = createServer(app);
-    const chatServerValidationPass = new Server(httpServer, {
+    const chatServerValidation = new Server(httpServer, {
         cors: {
             origin: "http://localhost:4200",
             methods: ["GET", "POST"],
@@ -48,71 +76,25 @@ describe("Integration Test - messageHandler", () => {
         }
     });
 
-    const messageGood = {
-        user: "test",
-        text: "test",
-        datetime: 12345
-    };
-    const returnGood = { "_tag": "Right", "right": messageGood };
-    const mockMessageValidatePass = jest.fn().mockReturnValue(returnGood);
-
-    const onConnectionValidationPass = (socket: Socket) => {
-        messageHandler(chatServerValidationPass, socket, mockMessageValidatePass);
+    const onConnectionValidation = (socket: Socket) => {
+        messageHandler(chatServerValidation, socket);
     };
 
-    chatServerValidationPass.on("connection", onConnectionValidationPass);
-    chatServerValidationPass.listen(2222);
+    chatServerValidation.on("connection", onConnectionValidation);
+    chatServerValidation.listen(2222);
 
-    const chatServerValidationFail = new Server(httpServer, {
-        cors: {
-            origin: "http://localhost:4200",
-            methods: ["GET", "POST"],
-            credentials: true
-        }
-    });
-
-    const returnBad = { "_tag": "Left", "left": "test" };
-    const mockMessageValidateFail = jest.fn().mockReturnValue(returnBad);
-
-    const onConnectionValidationFail = (socket: Socket) => {
-        messageHandler(chatServerValidationFail, socket, mockMessageValidateFail);
-    };
-
-    chatServerValidationFail.on("connection", onConnectionValidationFail);
-    chatServerValidationFail.listen(3333);
-
-    const senderValidationPass = io("http://localhost:2222", { withCredentials: true });
-    const receiverValidationPass = io("http://localhost:2222", { withCredentials: true });
-    const senderValidationFail = io("http://localhost:3333", { withCredentials: true });
-    const receiverValidationFail = io("http://localhost:3333", { withCredentials: true });
+    const senderValidation = io("http://localhost:2222", { withCredentials: true });
 
     afterAll((done) => {
-        chatServerValidationPass.close();
-        chatServerValidationFail.close();
-        senderValidationPass.disconnect();
-        receiverValidationPass.disconnect();
-        senderValidationFail.disconnect();
-        receiverValidationFail.disconnect();
+        chatServerValidation.close();
+        senderValidation.disconnect();
         done();
     });
 
-    test("Validation Pass", (done) => {
-        receiverValidationPass.on("message:server", () => {
-        });
+    test("Validation Input", (done) => {
         setTimeout(() => {
-            senderValidationPass.emit("message:client", "test", () => {
-                done();
-            });
-        }, 500);
-    });
-
-    test("Validation Fail", (done) => {
-        receiverValidationFail.on("message:server", () => {
-        });
-        setTimeout(() => {
-            senderValidationFail.emit("message:client", "test", () => {
-                done();
-            });
+            senderValidation.emit("message:client", "test", () => { });
+            setTimeout(() => { done(); }, 500);
         }, 500);
     });
 });

@@ -3,7 +3,6 @@ import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import { DefaultEventsMap } from "socket.io/dist/typed-events";
 import { messageHandler } from "./handlers/messageHandler";
-import { messageValidate } from "./validations/messageValidation";
 
 const serverStart = (port: number): Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap> => {
   const app = express();
@@ -18,7 +17,8 @@ const serverStart = (port: number): Server<DefaultEventsMap, DefaultEventsMap, D
 
   const onConnection = (socket: Socket) => {
     //console.log("user connected");
-    messageHandler(chatServer, socket, messageValidate);
+    messageHandler(chatServer, socket);
+    chatServer.to(socket.id).emit('connection', 'connected');
   };
 
   chatServer.on("connection", onConnection);
